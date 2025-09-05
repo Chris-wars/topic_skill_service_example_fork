@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:17.6
+    container_name: pg_topics
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app123
+      POSTGRES_DB: topics_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d topics_db"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+  backend:
+    build: .
+    container_name: topic_skill_backend
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: pg_topics
+      DB_PORT: 5432
+      DB_USER: app
+      DB_PASSWORD: app123
+      DB_NAME: topics_db
+    ports:
+      - "5000:5000"
+  
+volumes:
+  pgdata: {}
