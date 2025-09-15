@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request # Flask-Anwendung, JSON-Antworten und 
 from flask_migrate import Migrate
 from dotenv import load_dotenv
 from models import db, Topic, Skill
+from sqlalchemy import exists
 
 load_dotenv()
 
@@ -48,13 +49,10 @@ def get_topic_by_id(id):
     Ruft ein einzelnes Lern-Topic anhand seiner ID ab.
     Gibt 404 Not Found zurück, wenn das Topic nicht gefunden wird.
     """
-    topics = data_manager.read_data(TOPICS_FILE)
-    # Verwende 'next()' mit einem Generator-Ausdruck, um das erste passende Topic zu finden.
-    # Wenn kein Topic gefunden wird, ist der Standardwert 'None'.
-    topic = next((t for t in topics if t['id'] == id), None)
-    if topic:
-        return jsonify(topic)
-    return jsonify({"error": "Topic not found"}), 404
+    topic = Topic.query.get(id)
+    if not topic:
+        return jsonify({"error": "Topic not found"}), 404
+    return topic.to_dict()
 
 @app.route('/topics', methods=['POST'])
 def create_topic():
@@ -63,25 +61,23 @@ def create_topic():
     Erfordert 'name' und 'description' im JSON-Request-Body.
     Generiert eine eindeutige ID und speichert das Topic.
     """
-    new_topic_data = request.json
-    # Grundlegende Validierung der eingehenden Daten
-    if not new_topic_data or 'name' not in new_topic_data or 'description' not in new_topic_data:
-        return jsonify({"error": "Name und Beschreibung für das Topic sind erforderlich"}), 400
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    description = payload.get("description")
+    parent_id = payload.get("parentTopicID")
 
-    # Generiere eine universell eindeutige ID (UUID) für das neue Topic
-    new_topic_id = str(uuid.uuid4())
+    if not name:
+        return jsonify({"error": "Field 'name' is required."}), 422
 
-    topic = {
-        "id": new_topic_id,
-        "name": new_topic_data['name'],
-        "description": new_topic_data['description']
-    }
+    if parent_id:
+        parent = Topic.query.get(parent_id)
+        if not parent:
+            return jsonify({"error": "parentTopicID not found"}), 422
 
-    topics = data_manager.read_data(TOPICS_FILE)
-    topics.append(topic)
-    data_manager.write_data(TOPICS_FILE, topics)
-
-    return jsonify(topic), 201 # 201 Created Statuscode für erfolgreiche Ressourcenerstellung
+    topic = Topic(name=name, description=description, parent_topic_id=parent_id)
+    db.session.add(topic)
+    db.session.commit()
+    return topic.to_dict(), 201
 
 @app.route('/topics/<id>', methods=['PUT'])
 def update_topic(id):
@@ -89,28 +85,26 @@ def update_topic(id):
     Aktualisiert ein bestehendes Lern-Topic anhand seiner ID.
     Erfordert 'name' und 'description' im JSON-Request-Body für die vollständige Aktualisierung.
     """
-    updated_data = request.json
-    if not updated_data or 'name' not in updated_data or 'description' not in updated_data:
-        return jsonify({"error": "Name und Beschreibung für das Topic sind erforderlich"}), 400
-
-    topics = data_manager.read_data(TOPICS_FILE)
-
-    found_index = -1
-    for i, t in enumerate(topics):
-        if t['id'] == id:
-            found_index = i
-            break
-
-    if found_index == -1:
+    topic = Topic.query.get(id)
+    if not topic:
         return jsonify({"error": "Topic not found"}), 404
 
-    # Aktualisiere die Felder des gefundenen Topics
-    topics[found_index]['name'] = updated_data['name']
-    topics[found_index]['description'] = updated_data['description']
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or topic.name).strip()
+    description = payload.get("description", topic.description)
+    parent_id = payload.get("parentTopicID", topic.parent_topic_id)
 
-    data_manager.write_data(TOPICS_FILE, topics)
+    if parent_id:
+        parent = Topic.query.get(parent_id)
+        if not parent:
+            return jsonify({"error": "parentTopicID not found"}), 422
+    
+    topic.name = name
+    topic.description = description
+    topic.parent_topic_id = parent_id
+    db.session.commit()
+    return topic.to_dict()
 
-    return jsonify(topics[found_index]), 200 # 200 OK Statuscode für erfolgreiche Aktualisierung
 
 @app.route('/topics/<id>', methods=['DELETE'])
 def delete_topic(id):
@@ -118,22 +112,19 @@ def delete_topic(id):
     Löscht ein Lern-Topic anhand seiner ID.
     Gibt 204 No Content zurück, wenn erfolgreich gelöscht.
     """
-    topics = data_manager.read_data(TOPICS_FILE)
+    topic = Topic.query.get(id)
 
-    found_index = -1
-    for i, t in enumerate(topics):
-        if t['id'] == id:
-            found_index = i
-            break
-
-    if found_index == -1:
+    if not topic:
         return jsonify({"error": "Topic not found"}), 404
 
-    # Entferne das Topic aus der Liste
-    topics.pop(found_index)
-    data_manager.write_data(TOPICS_FILE, topics)
+    has_skills = db.session.query(exists().where(Skill.topic_id == id)).scalar()
+    has_topics = db.session.query(exists().where(Topic.parent_topic_id == id)).scalar()
 
-    return '', 204 # 204 No Content Statuscode für erfolgreiche Löschung ohne Rückgabeinhalt
+    if has_skills:
+        return jsonify({"error": "The topic has dependent skills, cannot delete the topic"}), 409
+
+    if has_topics:
+        return jsonify({"error": "The topic has dependent topics, cannot delete the topic"}), 409
 
 # --- SKILL ENDPUNKTE ---
 
