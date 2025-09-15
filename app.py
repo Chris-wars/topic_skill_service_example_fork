@@ -1,36 +1,23 @@
-
 import os
-import json # Bleibt importiert, da jsonify intern JSON verwendet und wir es für manuelle JSON-Konvertierungen nutzen könnten
-import uuid # Für die Generierung eindeutiger IDs
 from flask import Flask, jsonify, request # Flask-Anwendung, JSON-Antworten und Request-Objekt
 from flask_migrate import Migrate
 from dotenv import load_dotenv
-from models import db, Topic
-# Importiere unsere JsonDataManager-Klasse aus der data_manager.py Datei
-from data_manager import JsonDataManager
+from models import db, Topic, Skill
 
 load_dotenv()
 
-
 app = Flask(__name__)
+
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg2://app:app123@pg_topics:5432/topics_db"
+    "postgresql+psycopg2://app:app123@localhost:5432/topics_db"
 )
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
 db.init_app(app)
-migrate = Migrate(app, db)
+Migrate(app, db)
 
-# Definieren der Dateipfade für unsere Daten.
-# os.path.dirname(__file__) gibt den Pfad des aktuellen Skripts zurück.
-# os.path.join verbindet Pfadsegmente plattformunabhängig.
-DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
-TOPICS_FILE = os.path.join(DATA_DIR, 'topics.json')
-SKILLS_FILE = os.path.join(DATA_DIR, 'skills.json')
-
-# Erstelle eine Instanz unseres Datenmanagers.
-# Diese Instanz wird verwendet, um Daten aus den JSON-Dateien zu lesen und zu schreiben.
-data_manager = JsonDataManager()
 
 @app.route('/')
 def hello_world():
@@ -40,6 +27,10 @@ def hello_world():
     """
     return 'Hello from Topic & Skill Service!'
 
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
 # --- TOPIC ENDPUNKTE ---
 
 @app.route('/topics', methods=['GET'])
@@ -47,8 +38,9 @@ def get_topics():
     """
     Ruft alle verfügbaren Lern-Topics ab.
     """
-    topics = data_manager.read_data(TOPICS_FILE)
-    return jsonify(topics)
+    rows = Topic.query.order_by(Topic.name.asc()).all()
+    data = [topic.to_dict() for topic in rows]
+    return jsonify(data)
 
 @app.route('/topics/<id>', methods=['GET'])
 def get_topic_by_id(id):

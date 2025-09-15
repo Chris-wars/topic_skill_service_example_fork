@@ -2,6 +2,8 @@ services:
   postgres:
     image: postgres:17.6
     container_name: pg_topics
+    cpus: "0.5"
+    mem_limit: "512m"
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app123
@@ -15,20 +17,7 @@ services:
       interval: 5s
       timeout: 10s
       retries: 20
-      start_period: 20s
-  backend:
-    build: .
-    container_name: topic_skill_backend
-    depends_on:
-      - postgres
-    environment:
-      DB_HOST: pg_topics
-      DB_PORT: 5432
-      DB_USER: app
-      DB_PASSWORD: app123
-      DB_NAME: topics_db
-    ports:
-      - "5000:5000"
+      start_period: 15s
   
 volumes:
   pgdata: {}
