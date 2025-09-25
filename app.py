@@ -6,7 +6,7 @@ from flask_migrate import Migrate  # Für Datenbankmigrationen
 from dotenv import load_dotenv  # Für das Laden von Umgebungsvariablen aus .env-Dateien
 from models import db, Topic, Skill  # Datenbankmodelle importieren
 from sqlalchemy import exists  # Für Abfragen, ob abhängige Einträge existieren
-
+from flask_cors import CORS # Für Cross-Origin Resource Sharing (CORS)
 
 # Lädt Umgebungsvariablen aus einer .env-Datei, falls vorhanden
 load_dotenv()
@@ -27,7 +27,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 Migrate(app, db)
 
-
+CORS(app)  # Enable CORS for all routes
 
 # Basis-Endpunkt zur Überprüfung, ob der Service läuft
 @app.route('/')
